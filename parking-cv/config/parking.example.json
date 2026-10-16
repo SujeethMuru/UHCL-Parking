@@ -1,0 +1,6 @@
+{
+  "source": "data/videos/parking.mp4",
+  "loop": true,
+  "model_path": "models/vehicle-detector.pt",
+  "parking_spaces": []
+}

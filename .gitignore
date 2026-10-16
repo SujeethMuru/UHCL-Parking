@@ -216,3 +216,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Parking CV: local footage, frames, weights and generated results
+/parking-cv/data/**
+!/parking-cv/data/**/
+!/parking-cv/data/**/.gitkeep
+/parking-cv/models/**
+!/parking-cv/models/**/
+!/parking-cv/models/**/.gitkeep
+/parking-cv/outputs/
+/parking-cv/runs/
+/parking-cv/config/local.json
+.env.*
+!.env.example
+
+# Prevent accidental video/model uploads anywhere (case-insensitive extensions)
+*.[mM][pP]4
+*.[mM][oO][vV]
+*.[aA][vV][iI]
+*.[mM][kK][vV]
+*.[wW][eE][bB][mM]
+*.[mM]4[vV]
+*.[mM][tT][sS]
+*.[mM]2[tT][sS]
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+*.safetensors

@@ -1,4 +1,12 @@
-# UHCL Indoor Navigation Vision
+# UHCL-Parking
+
+Parking computer-vision proof of concept for the UHCL senior project. Start with
+recorded footage or a looping image sequence; live camera integration comes later.
+
+See [parking-CV setup](parking-cv/README.md) for the isolated prototype and footage rules.
+The original project plan is preserved below for reference.
+
+## Original indoor-navigation research plan
 
 Computer-vision research and prototype development for the UHCL indoor-navigation senior project, with GPU-performance experiments that can also support CENG 6536 Heterogeneous Computing.
 
