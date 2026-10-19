@@ -227,6 +227,7 @@ __marimo__/
 /parking-cv/outputs/
 /parking-cv/runs/
 /parking-cv/config/local.json
+/parking-cv/config/*.local.json
 .env.*
 !.env.example
 

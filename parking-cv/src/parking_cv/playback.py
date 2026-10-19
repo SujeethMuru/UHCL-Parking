@@ -71,7 +71,15 @@ def main():
             start = time.monotonic()
             count += 1
             if not args.headless:
-                cv2.imshow('UHCL-Parking | playback only | Q to quit', frame)
+                # Fit large camera panoramas on screen without changing source data.
+                height, width = frame.shape[:2]
+                scale = min(1.0, 1200 / width, 700 / height)
+                preview = frame
+                if scale < 1.0:
+                    preview = cv2.resize(frame, (max(1, round(width * scale)),
+                                                 max(1, round(height * scale))),
+                                         interpolation=cv2.INTER_AREA)
+                cv2.imshow('UHCL-Parking | playback only | Q to quit', preview)
                 delay = max(1, round(1000 / (args.fps or recorded_fps)
                                      - (time.monotonic() - start) * 1000))
                 if cv2.waitKey(delay) & 0xFF in (ord('q'), 27):
