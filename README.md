@@ -1,7 +1,31 @@
 # UHCL-Parking
 
 Parking computer-vision proof of concept for the UHCL senior project. Start with
-recorded footage or a looping image sequence; live camera integration comes later.
+recorded 360 footage; live camera integration comes later.
+
+## Current parking prototype
+
+- Eight fixed editing views and a full 360 overview with saved parking-space IDs.
+- Zoomable polygon editor, with moving/redrawing spaces from a clearer view.
+- Combined video occupancy, cross-view vehicle grouping, and confirmation to
+  reduce duplicate assignments and flickering states.
+- Readable labels, sampled preview MP4s, timestamped counts, and observation logs.
+- Separate front/back lot maps and recovery copies, kept local alongside footage.
+
+From `parking-cv/`, after installing the detection dependencies and adding local
+footage:
+
+```powershell
+.\.venv\Scripts\python.exe src\parking_cv\multi_view.py --setup
+# Later runs with saved markings:
+.\.venv\Scripts\python.exe src\parking_cv\multi_view.py
+```
+
+The current suite has 45 regression tests. Local recordings have been exercised,
+but full-video occupancy accuracy still needs measured validation. The next step
+is to check arrivals/departures and false occupied/free results on both lots,
+then integrate verified, timestamped results into HawkNav. Live streaming and
+stationary-car classification remain future work.
 
 See [parking-CV setup](parking-cv/README.md) for the isolated prototype and footage rules.
 The original project plan is preserved below for reference.
@@ -53,4 +77,5 @@ The Senior Project uses the computer-vision functionality itself. The Heterogene
 
 ## Status
 
-Initial repository setup. OpenCV validation is the first implementation milestone.
+The parking proof of concept above is the active implementation. The original
+indoor-navigation plan and experiments remain preserved for reference.

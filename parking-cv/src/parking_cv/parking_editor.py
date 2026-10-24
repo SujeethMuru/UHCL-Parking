@@ -32,7 +32,7 @@ class ViewTransform:
 
 
 class ParkingWindow:
-    def __init__(self,frame,spaces=None,validate=None,detections=None):
+    def __init__(self,frame,spaces=None,validate=None,detections=None,reference_spaces=None):
         self.root=tk.Tk()
         self.root.title('UHCL Parking — space editor' if validate else 'UHCL Parking — results')
         sw,sh=self.root.winfo_screenwidth(),self.root.winfo_screenheight()
@@ -42,6 +42,7 @@ class ParkingWindow:
         self.h,self.w=frame.shape[:2]
         self.view=ViewTransform(self.w,self.h)
         self.spaces=deepcopy(spaces or [])
+        self.reference_spaces=deepcopy(reference_spaces or [])
         self.validate=validate
         self.detections=detections or []
         self.result=None
@@ -145,6 +146,14 @@ class ParkingWindow:
         self.photo=ImageTk.PhotoImage(visible)
         self.canvas.delete('all')
         self.canvas.create_image(0,0,image=self.photo,anchor='nw')
+        for reference in self.reference_spaces:
+            if reference['corners'] is None:
+                continue
+            coords=self.screen(reference['corners'])
+            self.canvas.create_polygon(*[n for xy in coords for n in xy],
+                                       fill='',outline='#00dfff',dash=(6,3),width=2)
+            cx,cy=np.mean(coords,axis=0)
+            self.canvas.create_text(cx,cy,text=reference['label'],fill='#00dfff',font=('Arial',10,'bold'))
         for polygon in self.proposals:
             coords=self.screen(polygon)
             self.canvas.create_polygon(*[n for xy in coords for n in xy],
@@ -295,8 +304,32 @@ class ParkingWindow:
         self.root.destroy()
 
 
-def open_editor(frame,spaces,validate,detections=None):
-    window=ParkingWindow(frame,spaces,validate,detections)
+def open_editor(frame,spaces,validate,detections=None,reference_spaces=None,allow_transfer=True,title=None):
+    window=ParkingWindow(frame,spaces,validate,detections,reference_spaces)
+    if title:
+        window.root.title(title)
+    if reference_spaces:
+        window.message.set('Yellow: editable here. Cyan: saved elsewhere. Choose a cyan space below and Move editing here to adjust it in this view without making a duplicate.')
+        transferable=[r for r in reference_spaces if r.get('id')] if allow_transfer else []
+        if transferable:
+            choice=tk.StringVar(value=transferable[0]['label'])
+            row=ttk.Frame(window.root,padding=5)
+            row.pack(fill='x',before=window.canvas)
+            ttk.Label(row,text='Edit an existing space here:').pack(side='left')
+            ttk.Combobox(row,textvariable=choice,values=[r['label'] for r in transferable],
+                         state='readonly',width=24).pack(side='left',padx=4)
+
+            def transfer():
+                if window.spaces!=list(spaces) or window.pending:
+                    window.message.set('Save your current edits first, then reopen this view to move a cyan space.')
+                    return
+                reference=next(r for r in transferable if r['label']==choice.get())
+                operation='transfer' if reference.get('transferable') else 'redraw'
+                window.result={operation:reference['id']}
+                window.root.destroy()
+
+            ttk.Button(row,text='Edit here / redraw',command=transfer).pack(side='left')
+            ttk.Label(row,text='Keeps its ID. Incomplete outlines: draw four new corners.').pack(side='left',padx=6)
     window.root.mainloop()
     return window.result
 

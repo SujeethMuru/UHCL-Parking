@@ -21,7 +21,14 @@ def view_defaults(view):
         return 300,Path('config/video-spaces.local.json'),Path('outputs/video-occupancy')
     if view=='second':
         return 120,Path('config/video-spaces-second.local.json'),Path('outputs/video-occupancy/second-view')
+    if view=='back':
+        return 60,Path('config/video-spaces-back.local.json'),Path('outputs/video-occupancy/back-parking')
     raise ValueError('Unknown view')
+
+
+def default_source(view):
+    name='parking-test-Delta-BP-360.mp4' if view=='back' else 'parking-test-Delta-FP-360.mp4'
+    return Path('data/videos')/name
 
 
 def source_signature(path):
@@ -110,8 +117,8 @@ def annotate(view,detections,spaces,seconds,source_name):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--source',type=Path,default=Path('data/videos/parking-test-Delta-FP-360.mp4'))
-    parser.add_argument('--view',choices=['first','second'],default='first',help='Choose an independently calibrated parking direction.')
+    parser.add_argument('--source',type=Path)
+    parser.add_argument('--view',choices=['first','second','back'],default='first',help='Choose an independently calibrated parking direction and recording.')
     parser.add_argument('--config',type=Path)
     parser.add_argument('--yaw',type=float)
     parser.add_argument('--pitch',type=float,default=-20)
@@ -125,6 +132,7 @@ def main():
     parser.add_argument('--detect-only',action='store_true',help='Preview vehicle boxes without occupancy.')
     parser.add_argument('--headless',action='store_true')
     args=parser.parse_args()
+    args.source=default_source(args.view) if args.source is None else args.source
     default_yaw,default_config,base=view_defaults(args.view)
     args.yaw=default_yaw if args.yaw is None else args.yaw
     args.config=default_config if args.config is None else args.config

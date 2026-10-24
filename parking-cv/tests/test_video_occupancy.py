@@ -6,10 +6,19 @@ import unittest
 import numpy as np
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'/'parking_cv'))
-from video_occupancy import sample_indices,source_signature,annotate,make_projector,view_defaults
+from video_occupancy import sample_indices,source_signature,annotate,make_projector,view_defaults,default_source
 
 
 class VideoOccupancyTests(unittest.TestCase):
+    def test_back_recording_cannot_reuse_front_calibration(self):
+        yaw,config,output=view_defaults('back')
+        self.assertEqual(yaw,60)
+        self.assertEqual(default_source('back').name,'parking-test-Delta-BP-360.mp4')
+        for view in ('first','second'):
+            self.assertNotEqual(config,view_defaults(view)[1])
+            self.assertNotEqual(output,view_defaults(view)[2])
+            self.assertEqual(default_source(view).name,'parking-test-Delta-FP-360.mp4')
+
     def test_views_have_separate_calibration_and_outputs(self):
         first=view_defaults('first')
         second=view_defaults('second')
