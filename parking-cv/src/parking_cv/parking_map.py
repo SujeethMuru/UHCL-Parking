@@ -7,6 +7,24 @@ import numpy as np
 
 from occupancy import validate_spaces
 
+SPACE_TYPES={'standard':'Standard','ev':'EV charging','accessible':'Accessible',
+             'accessible_ev':'Accessible EV charging'}
+
+
+def set_space_type(mapping,space_id,space_type):
+    if space_type not in SPACE_TYPES:
+        raise ValueError('Choose a supported parking-space type.')
+    proposed=deepcopy(mapping)
+    slot=next(s for s in proposed['spaces'] if s['id']==space_id)
+    slot['space_type']=space_type
+    validate_map(proposed)
+    return proposed
+
+
+def space_label(slot):
+    suffix={'standard':'','ev':' [EV]','accessible':' [ACC]','accessible_ev':' [ACC+EV]'}
+    return slot['id']+suffix[slot.get('space_type','standard')]
+
 
 def validate_view(view):
     yaw,pitch,fov=(view[k] for k in ('yaw','pitch','fov'))
@@ -84,6 +102,8 @@ def validate_map(mapping):
     if len(set(ids))!=len(ids):
         raise ValueError('Each physical bay must have one unique ID and one owner.')
     for slot in mapping['spaces']:
+        if slot.get('space_type','standard') not in SPACE_TYPES:
+            raise ValueError('Invalid parking-space type.')
         if slot['owner'] not in views:
             raise ValueError('Parking space refers to a missing owner view.')
     for key in views:
@@ -128,7 +148,7 @@ def register_spaces(mapping,view_id,polygons):
                 # fragment while retaining the same physical bay identity.
                 other=[s for s in other if s['id']!=duplicate]
                 other_masks=[(key,m) for key,m in other_masks if key!=duplicate]
-                accepted.append({'id':duplicate,'owner':view_id,'corners':deepcopy(polygon)})
+                accepted.append({**deepcopy(prior),'owner':view_id,'corners':deepcopy(polygon)})
                 used.add(duplicate)
             else:
                 skipped.append(duplicate)
@@ -139,7 +159,9 @@ def register_spaces(mapping,view_id,polygons):
         if score<.5:
             next_id+=1
         used.add(key)
-        accepted.append({'id':key,'owner':view_id,'corners':deepcopy(polygon)})
+        metadata=deepcopy(prior) if score>=.5 else {}
+        accepted.append({**metadata,'id':key,'owner':view_id,'corners':deepcopy(polygon)})
+        accepted[-1].setdefault('space_type','standard')
     proposed['spaces']=other+accepted
     validate_map(proposed)
     return proposed,skipped
@@ -152,7 +174,13 @@ def combined_counts(mapping,observations):
         raise ValueError('Duplicate physical bay IDs.')
     if any(s not in {'free','occupied','unknown'} for s in states.values()):
         raise ValueError('Invalid occupancy state.')
-    return {'mapped':len(states),'occupied':sum(s=='occupied' for s in states.values()),
+    by_type={}
+    for kind in SPACE_TYPES:
+        members=[s for s in mapping['spaces'] if s.get('space_type','standard')==kind]
+        by_type[kind]={'mapped':len(members),'occupied':sum(states[s['id']]=='occupied' for s in members),
+                       'estimated_free':sum(states[s['id']]=='free' for s in members),
+                       'unknown':sum(states[s['id']]=='unknown' for s in members)}
+    return {'by_type':by_type,'mapped':len(states),'occupied':sum(s=='occupied' for s in states.values()),
             'estimated_free':sum(s=='free' for s in states.values()),
             'unknown':sum(s=='unknown' for s in states.values()),'spaces':states}
 
@@ -178,6 +206,20 @@ def replace_space(mapping,space_id,target_id,corners):
     slot.update(owner=target_id,corners=deepcopy(corners))
     validate_map(proposed)
     return proposed
+
+
+def focused_view(mapping,space_id):
+    """Center a temporary repair view on the bay's world direction."""
+    slot=next(s for s in mapping['spaces'] if s['id']==space_id)
+    owner=next(v for v in mapping['views'] if v['id']==slot['owner'])
+    direction=rays(slot['corners'],owner).mean(axis=0)
+    direction/=np.linalg.norm(direction)
+    key=f'repair-{space_id}'
+    while any(v['id']==key for v in mapping['views']):
+        key+='-new'
+    return {'id':key,'yaw':float(np.degrees(np.arctan2(direction[0],direction[2]))%360),
+            'pitch':float(np.clip(np.degrees(np.arcsin(direction[1])),-80,80)),
+            'fov':110}
 
 
 def cut_off(corners,margin=.005):

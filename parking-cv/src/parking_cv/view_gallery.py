@@ -8,7 +8,7 @@ import numpy as np
 
 from local_storage import save_image
 from parking_editor import ParkingWindow
-from parking_map import reproject, sphere_mask
+from parking_map import reproject, sphere_mask,SPACE_TYPES,space_label
 from video_occupancy import make_projector
 
 
@@ -39,7 +39,7 @@ def draw_bays(frame,mapping,target):
         pixels=(np.asarray(points)*[1024,768]).astype(np.int32)
         color=(0,255,255) if slot['owner']==target['id'] else (255,255,0)
         cv2.polylines(frame,[pixels],True,color,2)
-        cv2.putText(frame,slot['id'],tuple(pixels.mean(axis=0).astype(int)),cv2.FONT_HERSHEY_SIMPLEX,.55,color,2)
+        cv2.putText(frame,space_label(slot),tuple(pixels.mean(axis=0).astype(int)),cv2.FONT_HERSHEY_SIMPLEX,.55,color,2)
     return frame
 
 
@@ -106,7 +106,7 @@ def select_action(panorama,mapping):
     output=Path('outputs/view-gallery')/mapping.get('lot','front')
     views,atlas=build_gallery(panorama,mapping,output)
     window=ParkingWindow(atlas)
-    window.root.title('UHCL Parking | Eight views and full 360 overview')
+    window.root.title(f'UHCL Parking | {mapping.get("lot","front").title()} lot | Eight views and full 360 overview')
     result=None
     panel=ttk.Frame(window.root,padding=4)
     panel.pack(fill='x',before=window.canvas)
@@ -121,6 +121,47 @@ def select_action(panorama,mapping):
     for col in range(4):
         panel.columnconfigure(col,weight=1)
 
+    if mapping['spaces']:
+        from tkinter import StringVar
+        repair=ttk.Frame(window.root,padding=4)
+        repair.pack(fill='x',before=window.canvas)
+        repair_id=StringVar(value=mapping['spaces'][0]['id'])
+        ttk.Label(repair,text='Repair a cut-off space:').pack(side='left')
+        ttk.Combobox(repair,textvariable=repair_id,values=sorted(s['id'] for s in mapping['spaces']),
+                     state='readonly',width=10).pack(side='left',padx=4)
+
+        def focus():
+            nonlocal result
+            result=('focus',mapping,repair_id.get())
+            window.root.destroy()
+
+        ttk.Button(repair,text='Open centered view',command=focus).pack(side='left')
+        ttk.Label(repair,text='Wider view, tilted toward the space. Keeps its ID.').pack(side='left',padx=5)
+
+        category_row=ttk.Frame(window.root,padding=4)
+        category_row.pack(fill='x',before=window.canvas)
+        category_id=StringVar(value=mapping['spaces'][0]['id'])
+        category_type=StringVar(value=SPACE_TYPES[mapping['spaces'][0].get('space_type','standard')])
+        ttk.Label(category_row,text='Parking type:').pack(side='left')
+        picker=ttk.Combobox(category_row,textvariable=category_id,
+                            values=sorted(s['id'] for s in mapping['spaces']),state='readonly',width=10)
+        picker.pack(side='left',padx=4)
+        ttk.Combobox(category_row,textvariable=category_type,values=list(SPACE_TYPES.values()),
+                     state='readonly',width=24).pack(side='left',padx=4)
+
+        def load_type(event=None):
+            slot=next(s for s in mapping['spaces'] if s['id']==category_id.get())
+            category_type.set(SPACE_TYPES[slot.get('space_type','standard')])
+
+        def save_type():
+            nonlocal result
+            kind=next(k for k,v in SPACE_TYPES.items() if v==category_type.get())
+            result=('category',mapping,{'id':category_id.get(),'space_type':kind})
+            window.root.destroy()
+
+        picker.bind('<<ComboboxSelected>>',load_type)
+        ttk.Button(category_row,text='Save parking type',command=save_type).pack(side='left')
+
     def process():
         nonlocal result
         if not mapping['spaces']:
@@ -128,6 +169,13 @@ def select_action(panorama,mapping):
             return
         result=('process',mapping,None)
         window.root.destroy()
+
+    def inspect():
+        nonlocal result
+        result=('inspect',mapping,None)
+        window.root.destroy()
+
+    ttk.Button(panel,text='Identify / label spaces (clear view)',command=inspect).grid(row=3,column=0,columnspan=4,pady=3)
 
     # Keep earlier hand-marked directions editable even when they are not one
     # of the eight fixed angles. Their markings remain visible in the overview.

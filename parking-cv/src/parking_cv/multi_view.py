@@ -11,7 +11,7 @@ import numpy as np
 
 from local_storage import save_image,stamp,write_artifact
 from occupancy import classify_spaces,validate_spaces
-from parking_map import register_spaces,validate_map,combined_counts,cut_off,transfer_space,replace_space,reproject
+from parking_map import register_spaces,validate_map,combined_counts,cut_off,transfer_space,replace_space,reproject,focused_view,set_space_type,SPACE_TYPES,space_label
 from video_occupancy import default_source,source_signature,view_defaults,make_projector,read_frame,sample_indices
 
 
@@ -65,6 +65,45 @@ def setup(panorama,mapping,config,model):
         kind,mapping,key=action
         if kind=='process':
             return mapping,persist(config,mapping)
+        if kind=='category':
+            mapping=set_space_type(mapping,key['id'],key['space_type'])
+            config=persist(config,mapping)
+            continue
+        if kind=='inspect':
+            from space_inspector import inspect_spaces
+
+            def save_category(space_id,space_type):
+                nonlocal mapping,config
+                mapping=set_space_type(mapping,space_id,space_type)
+                config=persist(config,mapping)
+                return deepcopy(mapping)
+
+            inspect_spaces(panorama,mapping,save_category)
+            continue
+        if kind=='focus':
+            space_id=key
+            draft=deepcopy(mapping)
+            view=focused_view(mapping,space_id)
+            draft['views'].append(view)
+            slot=next(s for s in mapping['spaces'] if s['id']==space_id)
+            owner=next(v for v in mapping['views'] if v['id']==slot['owner'])
+            points=reproject(slot['corners'],owner,view)
+            frame=make_projector(w,h,view['yaw'],view['pitch'],view['fov'])(panorama)
+
+            def validate_repair(outlines):
+                if len(outlines)!=1:
+                    raise ValueError(f'Keep exactly one outline for {space_id}.')
+                replace_space(draft,space_id,view['id'],outlines[0])
+
+            repaired=open_editor(frame,[points] if points else [],validate_repair,infer(model,frame),
+                                 reference_spaces=[r for r in editor_references(draft,view) if r['id']!=space_id],
+                                 allow_transfer=False,
+                                 title=f'UHCL Parking | Repair {space_id}: wider centered view, adjust corners and save')
+            if repaired is not None:
+                mapping=replace_space(draft,space_id,view['id'],repaired[0])
+                config=persist(config,mapping)
+                print(f'Repaired {space_id} in centered view; same ID retained.',flush=True)
+            continue
         view=next(v for v in mapping['views'] if v['id']==key)
         frame=make_projector(w,h,view['yaw'],view['pitch'],view['fov'])(panorama)
         owned=[s for s in mapping['spaces'] if s['owner']==key]
@@ -125,7 +164,8 @@ def process_sample(mapping,frames,detections,seconds,display_views=None,state_fi
         records=[]
         for i,slot in enumerate(owned):
             status=observations[slot['id']]
-            records.append({'id':slot['id'],'status':status,'raw_status':raw_observations[slot['id']]})
+            records.append({'id':slot['id'],'space_type':slot.get('space_type','standard'),
+                            'status':status,'raw_status':raw_observations[slot['id']]})
         view_reports[key]={'detections':boxes,'owned_bays':records,'vehicle_assignments':assignments}
     owners={v['id']:v for v in mapping['views']}
     shown=display_views if display_views is not None else mapping['views']
@@ -146,7 +186,7 @@ def process_sample(mapping,frames,detections,seconds,display_views=None,state_fi
             color={'occupied':(0,0,255),'free':(0,210,0),'unknown':(0,180,255)}[status]
             cv2.polylines(image,[polygon],True,color,3,cv2.LINE_AA)
             center=polygon.mean(axis=0)*.625
-            text_labels.append((slot['id'],center[0],center[1]+34,color))
+            text_labels.append((space_label(slot),center[0],center[1]+34,color))
         for box in detections.get(key) or []:
             x1,y1,x2,y2=map(int,box['box_xyxy'])
             cv2.rectangle(image,(x1,y1),(x2,y2),(255,200,0),2)
@@ -164,11 +204,20 @@ def process_sample(mapping,frames,detections,seconds,display_views=None,state_fi
     while len(tiles)%columns:
         tiles.append(np.zeros_like(tiles[0]))
     grid=np.concatenate([np.concatenate(tiles[i:i+columns],axis=1) for i in range(0,len(tiles),columns)],axis=0)
-    grid=cv2.copyMakeBorder(grid,90,0,0,0,cv2.BORDER_CONSTANT)
+    grid=cv2.copyMakeBorder(grid,150,0,0,0,cv2.BORDER_CONSTANT)
+    category_lines=[]
+    types=list(SPACE_TYPES)
+    for start,y in ((0,87),(2,115)):
+        parts=[]
+        for kind in types[start:start+2]:
+            c=total['by_type'][kind]
+            parts.append(f'{SPACE_TYPES[kind]}: {c["estimated_free"]} free, {c["occupied"]} occupied, {c["unknown"]} unknown')
+        category_lines.append(('   /   '.join(parts),14,y,(225,225,225)))
     grid=labels(grid,[
         (f'PRERECORDED DEMO | Time {seconds:.1f}s | {len(shown)} displayed directions',14,0,(255,255,255)),
         (f'Mapped {total["mapped"]} | Occupied {total["occupied"]} | Estimated free {total["estimated_free"]} | Unknown {total["unknown"]}',14,28,(255,255,255)),
-        ('Red: occupied | Green: estimated free | Orange: unknown / confirming | Each car assigned once',14,58,(210,210,210))],size=24,background=False)
+        ('Red: occupied | Green: estimated free | Orange: unknown / confirming | Each car assigned once',14,58,(210,210,210)),
+        *category_lines],size=24,background=False)
     return grid,total,view_reports
 
 
@@ -235,9 +284,11 @@ def main():
         from occupancy_state import OccupancyFilter
         state_filter=OccupancyFilter()
         print(f'Processing {len(views)} directions, {len(mapping["spaces"])} mapped bay IDs.',flush=True)
-        with (run/'counts.csv').open('w',newline='') as file,(run/'observations.jsonl').open('w') as details:
+        with (run/'counts.csv').open('w',newline='') as file,(run/'observations.jsonl').open('w') as details, (run/'category-counts.csv').open('w',newline='') as category_file:
             csv_writer=csv.DictWriter(file,fieldnames=['video_seconds','mapped','occupied','estimated_free','unknown'])
             csv_writer.writeheader()
+            category_writer=csv.DictWriter(category_file,fieldnames=['video_seconds','space_type','mapped','occupied','estimated_free','unknown'])
+            category_writer.writeheader()
             for index in indices:
                 if viewer is not None:
                     from tkinter import TclError
@@ -256,7 +307,10 @@ def main():
                     if not writer.isOpened():
                         raise RuntimeError('Cannot create combined preview video.')
                 writer.write(grid)
-                csv_writer.writerow({'video_seconds':round(index/fps,3),**{k:v for k,v in total.items() if k!='spaces'}})
+                csv_writer.writerow({'video_seconds':round(index/fps,3),**{k:total[k] for k in ('mapped','occupied','estimated_free','unknown')}})
+                for kind,counts in total['by_type'].items():
+                    category_writer.writerow({'video_seconds':round(index/fps,3),'space_type':kind,**counts})
+                category_file.flush()
                 file.flush()
                 details.write(json.dumps({'seconds':index/fps,'counts':total,'views':observations})+'\n');details.flush()
                 if processed==0:

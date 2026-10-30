@@ -82,6 +82,38 @@ Save other pending edits before moving a space. Earlier custom directions with
 markings remain available through **Edit earlier markings**. Existing legacy
 single-view maps are imported only when their source fingerprint matches.
 
+For near-camera spaces cut off in the standard views, select the ID under
+**Repair a cut-off space** in the gallery and choose **Open centered view**.
+This opens a wider, downward-facing perspective centered on that bay. Adjust
+its corners and save. The repair keeps the same ID and adds an internal counting
+direction; the eight gallery views remain fixed. Closing without saving leaves
+the original map unchanged. Neighboring cyan outlines remain references.
+
+This repair option works for both front and back lots. Start the front gallery
+with `multi_view.py --setup` and the back gallery with `--lot back --setup`.
+
+### Standard, EV charging, and accessible spaces
+
+For crowded or distant spaces, choose **Identify / label spaces (clear view)**
+in the gallery. Pick View 1-8, then click inside a space. The toolbar shows its
+global ID and only that space receives an on-image text label, avoiding overlaps.
+Choose its type and **Save type**, then click the next space. Each change saves
+immediately. **Back to gallery** returns to setup. This view projects the original
+panorama at 2048 x 1536 instead of enlarging a small thumbnail. Zoom still cannot
+recover detail absent from the camera recording.
+
+In either lot's gallery, choose a space ID under **Parking type**, select its
+designation, and click **Save parking type**. The map saves immediately and the
+gallery refreshes. Options are Standard, EV charging, Accessible, and Accessible
+EV charging. The combined designation is a distinct category so every space
+contributes once to the total. Existing untyped spaces default to Standard until
+you label them manually. The program does not infer signage or eligibility.
+
+Gallery/video labels use `[EV]`, `[ACC]`, or `[ACC+EV]`. Types survive edits,
+transfers, and centered repairs. Video summaries show separate free, occupied,
+and unknown counts by type. Each run also writes `category-counts.csv` and adds
+`by_type` to JSON totals, while `counts.csv` retains its existing total columns.
+
 ## Process saved markings
 
 ```powershell
@@ -107,6 +139,18 @@ The same ID may appear in several overlapping views but contributes once to
 totals. Angular vehicle-box overlap groups repeat detections across directions,
 then assigns each group to one best matching bay. Geometric duplicate-outline
 checks also help prevent repeated spaces; both checks are approximate.
+
+Bay assignment uses confidence-weighted agreement across perspective views,
+with clipped boxes receiving less weight. One distorted view's maximum overlap
+cannot override agreement from clearer views. Assignment logs include bay votes.
+Matching emphasizes the bottom fifth of vehicle boxes near ground contact,
+reducing assignment to the space behind a tall car body. A cross-view vehicle
+group cannot contain two detections from the same view, preventing a broad box
+from merging two adjacent cars. An unassigned bay substantially covered by a
+vehicle box becomes unknown rather than automatically free. Previously confirmed
+occupancy can persist for up to eight unknown samples during an occlusion, then
+becomes unknown if evidence does not return. This is bounded memory, not proof
+that a hidden car remains parked. At slower sample intervals the hold lasts longer.
 
 Occupancy requires three consecutive occupied samples or two free samples before
 changing. At the default one-second sampling interval this adds roughly 2-3
@@ -157,13 +201,17 @@ unique vehicles. Use `--help` on each script for its supported options.
 
 ## Validation and remaining work
 
+See [challenges, fixes, and decisions](../docs/parking-cv-challenges-and-decisions.md)
+for failure cases, their fixes, tunable thresholds, and guidance for revisiting
+the implementation when requirements change.
+
 Run regression checks:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-Current suite: **45 tests**, including projection/seam geometry, editor transforms,
+Current suite: **53 tests**, including projection/seam geometry, editor transforms,
 storage recovery, source binding, bay transfers/redraws, eight-view display,
 cross-view vehicle assignment, and occupancy confirmation.
 
@@ -173,6 +221,26 @@ B001/B002 duplicate assignment and held the confirmed total at two while filteri
 a one-sample false positive. These checks are not an accuracy benchmark; footage
 and maps are excluded from Git, so test results do not reproduce those local
 recordings on a fresh clone.
+
+As of October 30, the user has visually reviewed the recorded-video workflow,
+including the second front video after the B024 correction, and reported that
+it looks good. Targeted saved-detection replay checks also verified the B006
+back-lot assignment and the B024/B025 front-lot correction. Visual acceptance
+does not replace a labeled accuracy evaluation.
+
+The second recordings use separate local maps, `multi-front-02.local.json` and
+`multi-back-02.local.json`, copied after visual and static-landmark alignment
+checks. These copies preserve types and IDs. They are not included in GitHub,
+and there is no general automatic transfer command yet. Once a verified map
+exists locally, run, for example:
+
+```powershell
+.\.venv\Scripts\python.exe src\parking_cv\multi_view.py --lot front --source data\videos\parking-test-Delta-FP-360-02.mp4 --config config\multi-front-02.local.json
+.\.venv\Scripts\python.exe src\parking_cv\multi_view.py --lot back --source data\videos\parking-test-Delta-BP-360-02.mp4 --config config\multi-back-02.local.json
+```
+
+This remains a working baseline. Revisit the matching rules, categories, timing,
+and interface when requirements change, preserving existing IDs and calibrations.
 
 Next steps:
 

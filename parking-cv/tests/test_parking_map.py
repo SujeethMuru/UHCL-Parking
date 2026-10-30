@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'/'parking_cv'))
-from parking_map import register_spaces,combined_counts,sphere_mask,reproject,validate_map,cut_off,transfer_space,rays,replace_space
+from parking_map import register_spaces,combined_counts,sphere_mask,reproject,validate_map,cut_off,transfer_space,rays,replace_space,set_space_type,focused_view
 from multi_view import process_sample
 from view_gallery import gallery_views,panorama_overlay,editor_references
 
@@ -81,7 +81,7 @@ class SharedMapTests(unittest.TestCase):
         self.assertEqual(counts['mapped'],1)
         self.assertEqual(counts['occupied'],1)
         self.assertEqual(len(details),2)
-        self.assertEqual(grid.shape,(604,1280,3))
+        self.assertEqual(grid.shape,(664,1280,3))
 
     def test_edge_cut_bay_is_unknown(self):
         edge=[[0,.4],[.3,.4],[.3,.8],[0,.8]]
@@ -177,9 +177,44 @@ class SharedMapTests(unittest.TestCase):
         detections={v['id']:[] for v in mapping['views']}
         detections['one']=[{'box_xyxy':[400,300,600,580]}]
         grid,total,_=process_sample(mapping,frames,detections,0,display_views=views)
-        self.assertEqual(grid.shape,(1118,2560,3))
+        self.assertEqual(grid.shape,(1178,2560,3))
         self.assertEqual(total['mapped'],1)
         self.assertEqual(total['occupied'],1)
+
+    def test_category_counts_partition_totals_without_double_counting(self):
+        mapping,_=register_spaces(self.mapping,'one',[self.bay])
+        key=mapping['spaces'][0]['id']
+        changed=set_space_type(mapping,key,'accessible_ev')
+        total=combined_counts(changed,{key:'free'})
+        self.assertEqual(total['by_type']['accessible_ev']['estimated_free'],1)
+        self.assertEqual(total['by_type']['standard']['mapped'],0)
+        for metric in ('mapped','occupied','estimated_free','unknown'):
+            self.assertEqual(sum(c[metric] for c in total['by_type'].values()),total[metric])
+        self.assertEqual(mapping['spaces'][0]['space_type'],'standard')
+
+    def test_type_survives_corner_edit_transfer_and_redraw(self):
+        mapping,_=register_spaces(self.mapping,'one',[self.bay])
+        key=mapping['spaces'][0]['id']
+        mapping=set_space_type(mapping,key,'accessible')
+        revised,_=register_spaces(mapping,'one',[(np.asarray(self.bay)+[.002,0]).tolist()])
+        moved=transfer_space(revised,key,'two')
+        replaced=replace_space(moved,key,'one',self.bay)
+        self.assertEqual(replaced['spaces'][0]['space_type'],'accessible')
+        self.assertEqual(replaced['spaces'][0]['id'],key)
+
+    def test_invalid_space_type_rejected(self):
+        mapping,_=register_spaces(self.mapping,'one',[self.bay])
+        with self.assertRaises(ValueError):
+            set_space_type(mapping,mapping['spaces'][0]['id'],'invalid')
+
+    def test_centered_repair_available_for_either_lot_without_mutation(self):
+        mapping,_=register_spaces(self.mapping,'one',[self.bay])
+        for lot in ('front','back'):
+            mapping['lot']=lot
+            before=deepcopy(mapping)
+            view=focused_view(mapping,mapping['spaces'][0]['id'])
+            self.assertIsNotNone(reproject(self.bay,self.view,view))
+            self.assertEqual(mapping,before)
 
 
 if __name__=='__main__':

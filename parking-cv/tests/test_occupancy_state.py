@@ -41,6 +41,43 @@ class GlobalOccupancyTests(unittest.TestCase):
         self.assertEqual(smoother.update({'B001':'free'})['B001'],'free')
         self.assertEqual(smoother.update({'B001':'unknown'})['B001'],'unknown')
 
+    def test_ground_contact_wins_over_body_overlap_with_rear_bay(self):
+        self.mapping['spaces'][0]['corners']=[[.2,.35],[.8,.35],[.8,.7],[.2,.7]]
+        self.mapping['spaces'][1]['corners']=[[.2,.7],[.8,.7],[.8,.95],[.2,.95]]
+        box={'box_xyxy':[307,115,717,653]}
+        states,_=global_observations(self.mapping,{'one':[box],'two':[box]})
+        self.assertEqual(states['B002'],'occupied')
+        self.assertNotEqual(states['B001'],'occupied')
+
+    def test_clipped_outlier_cannot_override_intact_view_agreement(self):
+        self.mapping['views'].append({'id':'three','yaw':0,'pitch':-20,'fov':90})
+        self.mapping['spaces'][0]['corners']=[[.2,.35],[.8,.35],[.8,.7],[.2,.7]]
+        self.mapping['spaces'][1]['corners']=[[.2,.7],[.8,.7],[.8,.95],[.2,.95]]
+        intact={'box_xyxy':[307,115,717,653],'confidence':.9}
+        clipped={'box_xyxy':[307,0,717,520],'confidence':.99}
+        states,groups=global_observations(self.mapping,{'one':[intact],'two':[intact],'three':[clipped]})
+        self.assertEqual(len(groups),1)
+        self.assertEqual(states['B002'],'occupied')
+        self.assertNotEqual(states['B001'],'occupied')
+
+    def test_broad_cross_view_box_cannot_merge_two_same_view_cars(self):
+        cars=[{'box_xyxy':[240,350,500,620]},{'box_xyxy':[510,350,780,620]}]
+        broad={'box_xyxy':[230,330,790,630]}
+        _,groups=global_observations(self.mapping,{'one':cars,'two':[broad]})
+        self.assertEqual(len(groups),2)
+        for group in groups:
+            self.assertEqual(len(group['views']),len(set(group['views'])))
+
+    def test_occlusion_holds_occupied_briefly_then_becomes_unknown(self):
+        smoother=OccupancyFilter(occlusion_hold_samples=2)
+        for _ in range(3):
+            smoother.update({'B001':'occupied'})
+        self.assertEqual(smoother.update({'B001':'unknown'})['B001'],'occupied')
+        self.assertEqual(smoother.update({'B001':'unknown'})['B001'],'occupied')
+        self.assertEqual(smoother.update({'B001':'unknown'})['B001'],'unknown')
+        smoother.update({'B001':'free'})
+        self.assertEqual(smoother.update({'B001':'free'})['B001'],'free')
+
 
 if __name__=='__main__':
     unittest.main()

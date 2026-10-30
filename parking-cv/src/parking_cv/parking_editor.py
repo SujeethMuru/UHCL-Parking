@@ -310,7 +310,7 @@ def open_editor(frame,spaces,validate,detections=None,reference_spaces=None,allo
         window.root.title(title)
     if reference_spaces:
         window.message.set('Yellow: editable here. Cyan: saved elsewhere. Choose a cyan space below and Move editing here to adjust it in this view without making a duplicate.')
-        transferable=[r for r in reference_spaces if r.get('id')] if allow_transfer else []
+        transferable=sorted((r for r in reference_spaces if r.get('id')),key=lambda r:r['id']) if allow_transfer else []
         if transferable:
             choice=tk.StringVar(value=transferable[0]['label'])
             row=ttk.Frame(window.root,padding=5)

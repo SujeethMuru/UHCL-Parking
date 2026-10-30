@@ -11,6 +11,8 @@ recorded 360 footage; live camera integration comes later.
   reduce duplicate assignments and flickering states.
 - Readable labels, sampled preview MP4s, timestamped counts, and observation logs.
 - Separate front/back lot maps and recovery copies, kept local alongside footage.
+- Centered repairs for cut-off bays and a clear click-to-identify labeling screen.
+- Separate Standard, EV charging, Accessible, and Accessible EV charging counts.
 
 From `parking-cv/`, after installing the detection dependencies and adding local
 footage:
@@ -21,13 +23,17 @@ footage:
 .\.venv\Scripts\python.exe src\parking_cv\multi_view.py
 ```
 
-The current suite has 45 regression tests. Local recordings have been exercised,
-but full-video occupancy accuracy still needs measured validation. The next step
-is to check arrivals/departures and false occupied/free results on both lots,
-then integrate verified, timestamped results into HawkNav. Live streaming and
-stationary-car classification remain future work.
+The current suite has 53 regression tests. The user visually reviewed the local
+front/back recordings, including the second front recording after the final
+assignment fix, and reported satisfactory behavior. A labeled accuracy benchmark
+is still pending. The next step is to agree on timestamped occupancy output and
+HawkNav integration with the app team. Live streaming and stationary-car
+classification remain future work. This prototype is a working baseline that
+will change as requirements evolve.
 
 See [parking-CV setup](parking-cv/README.md) for the isolated prototype and footage rules.
+See [challenges, fixes, and decisions](docs/parking-cv-challenges-and-decisions.md)
+for implementation history, known limitations, and guidance for future changes.
 The original project plan is preserved below for reference.
 
 ## Original indoor-navigation research plan
