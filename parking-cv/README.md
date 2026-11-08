@@ -38,6 +38,76 @@ For another filename, use `--source data/videos/your-recording.mp4`. A different
 recording requires a new `--config config/your-map.local.json` and calibration;
 the source fingerprint prevents silently applying an unrelated map.
 
+## Watch for camera snapshots
+
+Set the camera to take a photo every minute. Keep it in the same position and
+orientation as the parking calibration. Configure your export or import workflow
+to place **stitched 2:1 equirectangular JPEGs** in a local folder. The watcher
+starts at that folder. A camera writing only to its SD card needs a separate
+transfer step before the laptop can see each photo. Raw fisheye captures need
+stitching before import.
+
+From `parking-cv`, use the calibration that matches your camera. For the
+verified front-lot setup:
+
+```powershell
+New-Item -ItemType Directory -Force .\data\camera-inbox
+.\.venv\Scripts\python.exe .\src\parking_cv\watch_snapshots.py --inbox .\data\camera-inbox --config .\config\multi-front-02.local.json
+```
+
+Copy a stitched JPEG into the folder to try it. If the export workflow supports
+it, write to a temporary name and rename to `.jpg` when complete. The watcher
+also waits for each file to settle, processes an existing batch on startup,
+and skips snapshots whose reports already exist. Run one watcher per inbox.
+Use Ctrl+C to stop, or add `--once` to process a batch and exit.
+
+Each completed snapshot has a JSON report in `outputs/snapshots/` with a
+snapshot ID, lot, file modification time, analysis time, occupancy counts,
+and the status of each calibrated space. The modification time comes from the
+imported file and may differ from the camera's capture time. Results are
+single-photo estimates saved locally for later integration with HawkNav.
+
+### Send snapshot results to Supabase
+
+Run the watcher on the camera laptop with `--supabase-config` to POST a batch
+of spot updates per photo. Each row contains `parking_lot_id`, `parking_spot_id`,
+`parking_spot_type`, and `is_available`. Supabase generates `id` and
+`updated_at`. Free and occupied spots use `1` and `0`, respectively.
+Unknown spots stay in the local report and are omitted from the upload.
+The calibration's accessible spots use the database label `handicap`.
+
+Copy `config/hawknav.example.json` to `config/hawknav.local.json`. It uses
+`parking_spot_updates` and lot ID `1`. The watcher uses the number in each
+calibrated label as `parking_spot_id`. For example, `B001` becomes `1` and
+`B019` becomes `19`.
+
+Set the project URL and enter a key authorized to insert into the table.
+Keep credentials in the watcher's environment on the camera laptop.
+
+```powershell
+$env:SUPABASE_URL = 'https://YOUR-PROJECT.supabase.co'
+$env:SUPABASE_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'Supabase API key' -AsSecureString)).Password
+.\.venv\Scripts\python.exe .\src\parking_cv\watch_snapshots.py --inbox .\data\camera-inbox --config .\config\multi-front-02.local.json --supabase-config .\config\hawknav.local.json
+```
+
+For a publishable key with a signed-in role, supply that role's JWT in
+`SUPABASE_ACCESS_TOKEN`. For a trusted deployment using a secret key, the
+watcher uses the key in the API key header.
+
+The watcher retries uploads that fail to connect or receive a definite
+rejection. If a POST may have reached the database and the outcome is unknown,
+the report stays in `sending-*` under `outputs/snapshots/` for review while
+new snapshots continue. Check Supabase before moving that report to `sent-*`
+if it was inserted or back to `pending-*` if it was absent. The generated IDs
+give each insert a new identity, so automatically resending an uncertain batch
+could duplicate rows. A restart resumes pending uploads even after the source
+photos have been removed.
+
+Use a fresh inbox for deployment if you only want new captures. Adding
+Supabase delivery also processes photos already in the inbox, including photos
+previously analyzed in local-only mode. Run one watcher per inbox and output
+directory.
+
 ## Mark and edit spaces
 
 Run commands from `parking-cv/`:

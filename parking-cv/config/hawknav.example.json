@@ -1,0 +1,5 @@
+{
+  "schema": "public",
+  "table": "parking_spot_updates",
+  "parking_lot_id": 1
+}
