@@ -69,13 +69,12 @@ class SupabaseDelivery:
         spot_ids = model_spot_ids(states)
         types = {"standard": "standard", "accessible": "handicap",
                  "ev": "ev", "accessible_ev": "accessible_ev"}
-        availability = {"free": 1, "occupied": 0}
+        availability = {"free": True, "occupied": False, "unknown": None}
         return [
             {"parking_lot_id": self.lot_id, "parking_spot_id": spot_id,
              "parking_spot_type": types[report["space_types"][label]],
              "is_available": availability[states[label]]}
             for label, spot_id in sorted(spot_ids.items(), key=lambda item: item[1])
-            if states[label] != "unknown"
         ]
 
     def post(self, path, rows):
@@ -94,7 +93,13 @@ class SupabaseDelivery:
                 return
             if 400 <= response.status < 500 and response.status != 408:
                 in_flight.replace(path)
-            raise RuntimeError(f"Supabase returned HTTP {response.status}")
+            try:
+                error = json.loads(response.read(4096))
+                message = error.get("message", "")
+            except (ValueError, AttributeError):
+                message = ""
+            status = f"Supabase returned HTTP {response.status}"
+            raise RuntimeError(f"{status}: {message}" if message else status)
         finally:
             connection.close()
 
@@ -108,13 +113,11 @@ class SupabaseDelivery:
             try:
                 report = json.loads(path.read_bytes())
                 rows = self.rows(report)
+                if not rows:
+                    raise ValueError("Snapshot has no calibrated parking spaces.")
                 self.sent.mkdir(parents=True, exist_ok=True)
-                if rows:
-                    self.post(path, rows)
-                    logging.info("Posted %s parking spaces to Supabase for %s.", len(rows), path.stem)
-                else:
-                    path.replace(self.sent / path.name)
-                    logging.info("No known parking states to post for %s.", path.stem)
+                self.post(path, rows)
+                logging.info("Posted %s parking spaces to Supabase for %s.", len(rows), path.stem)
             except (OSError, HTTPException, RuntimeError, ValueError, KeyError, TypeError) as exc:
                 if (self.sending / path.name).exists():
                     logging.error("Upload outcome unknown for %s (%s). Held in %s for review.",

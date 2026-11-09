@@ -72,8 +72,8 @@ single-photo estimates saved locally for later integration with HawkNav.
 Run the watcher on the camera laptop with `--supabase-config` to POST a batch
 of spot updates per photo. Each row contains `parking_lot_id`, `parking_spot_id`,
 `parking_spot_type`, and `is_available`. Supabase generates `id` and
-`updated_at`. Free and occupied spots use `1` and `0`, respectively.
-Unknown spots stay in the local report and are omitted from the upload.
+`updated_at`. The batch includes every calibrated spot, with `is_available`
+set to JSON `true` for available, `false` for occupied, and `null` for unknown.
 The calibration's accessible spots use the database label `handicap`.
 
 Copy `config/hawknav.example.json` to `config/hawknav.local.json`. It uses

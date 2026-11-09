@@ -57,6 +57,7 @@ class SupabaseDeliveryTests(unittest.TestCase):
             connection = connect.return_value
             response = connection.getresponse.return_value
             response.status = 429
+            response.read.return_value = b'{"message":"Too many requests"}'
             self.assertFalse(delivery.flush())
             self.assertTrue(queued.exists())
             failed_request = connection.request.call_args.args
@@ -73,12 +74,17 @@ class SupabaseDeliveryTests(unittest.TestCase):
             method, path, body, headers = request
             self.assertEqual(method, "POST")
             self.assertEqual(path, "/rest/v1/parking_spot_updates")
-            self.assertEqual(json.loads(body), [
+            rows = json.loads(body)
+            self.assertEqual(rows, [
                 {"parking_lot_id": 1, "parking_spot_id": 19,
-                 "parking_spot_type": "standard", "is_available": 0},
+                 "parking_spot_type": "standard", "is_available": False},
                 {"parking_lot_id": 1, "parking_spot_id": 20,
-                 "parking_spot_type": "handicap", "is_available": 1},
+                 "parking_spot_type": "handicap", "is_available": True},
+                {"parking_lot_id": 1, "parking_spot_id": 21,
+                 "parking_spot_type": "standard", "is_available": None},
             ])
+            self.assertIs(rows[0]["is_available"], False)
+            self.assertIs(rows[1]["is_available"], True)
             self.assertEqual(headers["apikey"], "sb_secret_test")
             self.assertIn("missing=default", headers["Prefer"])
             self.assertNotIn("Authorization", headers)
