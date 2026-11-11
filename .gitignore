@@ -228,6 +228,8 @@ __marimo__/
 /parking-cv/runs/
 /parking-cv/config/local.json
 /parking-cv/config/*.local.json
+!/parking-cv/config/multi-front-02.local.json
+!/parking-cv/config/multi-back-02.local.json
 .env.*
 !.env.example
 
